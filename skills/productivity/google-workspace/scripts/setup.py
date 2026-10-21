@@ -58,6 +58,15 @@ SCOPES = [
     "https://www.googleapis.com/auth/documents",
 ]
 
+SERVICE_SCOPES = {
+    "email": ["gmail.readonly", "gmail.send", "gmail.modify"],
+    "calendar": ["calendar"],
+    "drive": ["drive"],
+    "contacts": ["contacts.readonly"],
+    "sheets": ["spreadsheets"],
+    "docs": ["documents"],
+}
+
 # OAuth redirect for "out of band" manual code copy flow.
 # Google deprecated OOB, so we use a localhost redirect and tell the user to
 # copy the code from the browser's URL bar (or the page body).
@@ -291,7 +300,7 @@ def _extract_code_and_state(code_or_url: str) -> tuple[str, str | None]:
     return params["code"][0], state
 
 
-def get_auth_url():
+def get_auth_url(services: str | None = None):
     """Print the OAuth authorization URL. User visits this in a browser."""
     if not CLIENT_SECRET_PATH.exists():
         print("ERROR: No client secret stored. Run --client-secret first.")
@@ -300,9 +309,15 @@ def get_auth_url():
     _ensure_deps()
     from google_auth_oauthlib.flow import Flow
 
+    scopes = SCOPES
+    if services:
+        wanted = set()
+        for w in services.split(","):
+            wanted.update(SERVICE_SCOPES.get(w.strip(), []))
+        scopes = [s for s in SCOPES if any(f"auth/{frag}" in s for frag in wanted)]
     flow = Flow.from_client_secrets_file(
         str(CLIENT_SECRET_PATH),
-        scopes=SCOPES,
+        scopes=scopes,
         redirect_uri=REDIRECT_URI,
         autogenerate_code_verifier=True,
     )
@@ -424,6 +439,7 @@ def main():
     group.add_argument("--auth-code", metavar="CODE", help="Exchange auth code for token")
     group.add_argument("--revoke", action="store_true", help="Revoke and delete stored token")
     group.add_argument("--install-deps", action="store_true", help="Install Python dependencies")
+    parser.add_argument("--services", metavar="LIST", help="Comma-separated services for --auth-url (email,calendar,drive,contacts,sheets,docs); default all")
     args = parser.parse_args()
 
     if args.check:
@@ -433,7 +449,7 @@ def main():
     elif args.client_secret:
         store_client_secret(args.client_secret)
     elif args.auth_url:
-        get_auth_url()
+        get_auth_url(args.services)
     elif args.auth_code:
         exchange_auth_code(args.auth_code)
     elif args.revoke:
